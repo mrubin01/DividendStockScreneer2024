@@ -1,0 +1,5 @@
+yfinance as yf
+pandas as pd
+numpy
+streamlit as st
+sys
