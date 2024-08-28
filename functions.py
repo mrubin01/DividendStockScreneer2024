@@ -41,15 +41,19 @@ def read_stock_tickers(stocks):
 # Calculate positive and negative metrics
 def calculate_metrics(row):
     positives = sum([
-        row['dividend_yield'] > 3,
-        30 <= row['payout_ratio'] <= 60,
+        row['yearly_dividend_yield'] >= 8,
+        0 <= row['payout_ratio'] <= 60,
         row['dividend_growth_rate'] > 5,
         row['eps'] > 0,
         row['pe_ratio'] < 20,
         row['debt_to_equity'] < 1,
-        row['roe'] > 10
+        row['roe'] > 10,
+        # additional metrics
+        row['delta_price_book'] < 0,
+        0 <= row['peg_ratio'] <= 1,
+        row['div_coverage_ratio'] >= 1.5
     ])
-    negatives = 7 - positives
+    negatives = 10 - positives
     return positives, negatives
 
 
