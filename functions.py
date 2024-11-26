@@ -1,7 +1,17 @@
 import yfinance as yf
 import pandas as pd
-import numpy
-import streamlit
+
+
+def dict_from_two_lists(lst1: list, lst2: list):
+    """
+    From two lists it will create a dictionary with keys/values
+    :param lst1: a list of keys
+    :param lst2: a list of values
+    :return: a dictionary
+    """
+    dictionary = dict(zip(lst1, lst2))
+
+    return dictionary
 
 
 # Function to fetch stock data
@@ -26,6 +36,12 @@ def fetch_stock_data(ticker):
 
 # Function to calculate dividend growth rate
 def calculate_dividend_growth_rate(stock):
+    """
+    It calculates the dividend growth rate using the first and
+    the last dividend paid
+    :param stock: a yfinance ticker
+    :return: if there are at least 2 dividends issued, it will return the increase in dividend per year
+    """
     dividends = stock.dividends
     if len(dividends) < 2:
         return 0
@@ -41,13 +57,15 @@ def read_stock_tickers(stocks):
 # Calculate positive and negative metrics
 def calculate_metrics(row):
     positives = sum([
-        row['yearly_dividend_yield'] >= 8,
+        row['dividend_yield'] >= 10,
         0 <= row['payout_ratio'] <= 60,
         row['dividend_growth_rate'] > 5,
         row['eps'] > 0,
-        row['pe_ratio'] < 20,
+        # row['pe_ratio'] < 20,
+        row['pe_ratio'] == 1,
         row['debt_to_equity'] < 1,
-        row['roe'] > 10,
+        # row['roe'] > 10,
+        row['roe'] == 1,
         # additional metrics
         row['delta_price_book'] < 0,
         0 <= row['peg_ratio'] <= 1,

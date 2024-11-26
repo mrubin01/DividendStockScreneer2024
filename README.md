@@ -9,25 +9,27 @@ It is a screener of dividend stocks showing ten financial metrics. For each metr
 The difference between the current price and the book value: if negative, the stock may be undervalued.
 
 ## Yearly Dividend Yield
-Rather than the current dividend yield, the yearly yield is shown, that is the metric recalculated on a 12-months basis. Stocks with a yearly dividend yield lower than 8% are excluded.
+Rather than the current dividend yield, the yearly yield is shown, that is the metric recalculated on a 12-months basis. Stocks with a yearly dividend yield lower than 10% are excluded.
 
 ## Payout ratio
 This metric must be between 0 and 60% to be considered positive.
 
 ## Dividend growth rate
-The growth of the dividend issued by the company based on the last 5 years.
+The growth of the dividend issued by the company based on the first and the last dividend issued.
 
 ## EPS (Earnings per share)
 The higher the better, tough the PE ratio is considered more reliable.
 
 ## PE Ratio
-It is the trailing ratio, not the forward one, and should be compared with the industry average ratio. Anyway, here a PE ratio lower than is considered positive.
+It is the trailing ratio, not the forward one, and is compared with the industry average ratio.
+If it's not possible, it will be positive if it's < 20%: this could imply that the stock is undervalued
 
 ## Debt to Equity
 It compares the company debts with the equity value. If lower than 1, it is positive.
 
 ## ROE (Return On Equity)
-A ROE higher than 10% is considered good and the higher the better.
+It is compared with the industry average ratio.
+If it's not possible, it will be positive > 10%
 
 ## PEG Ratio
 If between 0 and 1, the stock may be undervalued. If higher than 1, the stock may be overvalued. If negative, the stock may be in troubles.

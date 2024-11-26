@@ -3,38 +3,63 @@ import pandas as pd
 import numpy
 import streamlit as st
 import sys
+
+import ROEPerIndustry
 from functions import *
+import PERatioPerIndustry
 from datetime import datetime
+import time
 import warnings
+import requests_cache
 warnings.filterwarnings('ignore')
 pd.set_option('display.max_columns', None)
 
-current_month = datetime.now().month  # this will be used to calculate the metrics on a yearly basis
-
-# the stock list comes from the project DataFrom_yfinance (active tickers)
-stocks_list = "stocks.txt"
-
-# All stocks in a list
-stock_tickers = read_stock_tickers('stocks.txt')
-
-# stock_data = [fetch_stock_data(ticker) for ticker in stock_data]
-
-# uncomment the code below to fetch info for a stock
-stock = yf.Ticker("ASC")
-print(stock.info)
-sys.exit()
-
-
-stock_data = []
-stock_with_no_yield = []
 """ Instead of using the function fetch_stock_data, the metrics have been downloaded one
 by one to deal with missing data. The function throws an error even for one missing metric,
 while this way the tickers with missing data will be used as well and the missing metric 
 will be set to -999999 """
 
+current_month = datetime.now().month  # this will be used to calculate the metrics on a yearly basis
+
+# the stock list comes from the project DataFrom_yfinance (active tickers)
+# stocks_list = "stocks.txt"
+
+# the following stocks are updated to Oct 2024
+# stocks_list = "nyse_tickers_oct2024.txt"
+# stocks_list = "nasdaq_tickers_oct2024.txt"
+
+# All stocks in a list
+stock_tickers = read_stock_tickers('nasdaq_tickers_oct2024.txt')
+
+# stock_data = [fetch_stock_data(ticker) for ticker in stock_data]
+
+# uncomment the code below to fetch info for a stock
+# stock = yf.Ticker("ASC")
+# print(stock.info)
+# sys.exit()
+
+
+stock_data = []
+stock_with_no_yield = []
+
+
+# set up a user-agent to avoid error 429 in yfinance (Too many requests): it doesn't fix the error
+session = requests_cache.CachedSession('yfinance.cache')
+# the user-agent string comes from the developer tool in Firefox
+session.headers['User-agent'] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+
+# industry PE ratios
+industry_pe_ratio = PERatioPerIndustry.avg_pe_ratio
+
+# industry ROE
+industry_roe = ROEPerIndustry.roe_by_industry
+
 for t in stock_tickers:
     if t not in ("AIF", "AFT"):
-        stock = yf.Ticker(t)
+        stock = yf.Ticker(t, session=session)
+        print(t)
+        # this is used to avoid overpassing the request limit per minute
+        time.sleep(1)
 
         try:
             if stock.info["shortName"] and isinstance(stock.info["shortName"], str):
@@ -69,16 +94,21 @@ for t in stock_tickers:
             price = -999999
 
         # Fetch the metrics, otherwise set them to -999999
+        # dividendRate is the total amount of dividends announced for the current year
+        # WARNING: sometimes dividendRate is wrong both in yfinance and Nasdaq, but trailingAnnualDividendYield and
+        # trailingAnnualDividendRate are wrong most of the time, then it's been decided to use dividendRate to
+        # calculate the yield
         try:
-            if stock.info["dividendYield"] and not isinstance(stock.info["dividendYield"], str):
-                div_yield = round(stock.info["dividendYield"] * 100, 2)
+            if stock.info["dividendRate"] and not isinstance(stock.info["dividendRate"], str):
+                div_rate = round(stock.info["dividendRate"], 2)
         except KeyError:
-            div_yield = -999999
+            div_rate = -999999
 
-        if div_yield != -999999:
-            yearly_div_yield = round((div_yield / current_month) * 12, 2)
+        # Forward dividend yield on the basis of dividendRate
+        if div_rate != -999999:
+            div_yield = round((div_rate / price) * 100, 2)
         else:
-            yearly_div_yield = -999999
+            div_yield = -999999
 
         try:
             if stock.info["payoutRatio"] and not isinstance(stock.info["payoutRatio"], str):
@@ -111,11 +141,35 @@ for t in stock_tickers:
         except KeyError:
             pe_ratio = -999999
 
+        # compare the company PE Ratio with the industry avg, otherwise compare it with > or < 20%
+        try:
+            if pe_ratio != -999999 and pe_ratio < industry_pe_ratio[industry]:
+                pe_ratio = 1
+            else:
+                pe_ratio = 0
+        except KeyError:
+            if pe_ratio < 20:
+                pe_ratio = 1
+            else:
+                pe_ratio = 0
+
         try:
             if stock.info["returnOnEquity"] and not isinstance(stock.info["returnOnEquity"], str):
                 roe = round(stock.info["returnOnEquity"], 2)
         except KeyError:
             roe = -999999
+
+        # compare the company ROE with the industry avg, otherwise check if it's > 10%
+        try:
+            if roe != -999999 and roe > industry_roe[industry]:
+                roe = 1
+            else:
+                roe = 0
+        except KeyError:
+            if roe > 10:
+                roe = 1
+            else:
+                roe = 0
 
         # additional metrics have been added
         try:
@@ -141,7 +195,6 @@ for t in stock_tickers:
             "price": price,
             "delta_price_book": delta_price_book,
             "dividend_yield": div_yield,
-            "yearly_dividend_yield": yearly_div_yield,
             "payout_ratio": pay_ratio,
             "dividend_growth_rate": div_growth_rate,
             "eps": eps,
@@ -153,67 +206,69 @@ for t in stock_tickers:
         }
 
         # exclude stocks with no dividend yield and those with a yearly yield lower than 10%
-        if dic["dividend_yield"] != -999999 and dic["yearly_dividend_yield"] >= 10 and dic["div_coverage_ratio"] >= 1.5:
-            stock_data.append(dic)
-        else:
+        try:
+            if dic["dividend_yield"] != -999999 and dic["dividend_yield"] >= 10 and dic["div_coverage_ratio"] >= 1.5:
+                stock_data.append(dic)
+            else:
+                stock_with_no_yield.append(dic)
+        except KeyError:
             stock_with_no_yield.append(dic)
 
-stock_data = [data for data in stock_data if data is not None]  # Filter out stocks with missing data
+if len(stock_data) > 0:
+    stock_data = [data for data in stock_data if data is not None]  # Filter out stocks with missing data
 
-# create a dataframe
-stock_df = pd.DataFrame(stock_data)
+    # create a dataframe
+    stock_df = pd.DataFrame(stock_data)
 
-stock_df[['positives', 'negatives']] = stock_df.apply(lambda row: calculate_metrics(row), axis=1, result_type="expand")
+    stock_df[['positives', 'negatives']] = stock_df.apply(lambda row: calculate_metrics(row), axis=1, result_type="expand")
 
-# Streamlit interface
-st.title("Dividend Stock Screener")
+    # Streamlit interface
+    st.title("Dividend Stock Screener")
 
-st.write("Select sorting criteria:")
-criteria = st.selectbox("Sort by", ["Dividend Yield",
-                                    "Yearly Dividend Yield",
-                                    "Payout Ratio",
-                                    "Dividend Growth Rate",
-                                    "EPS",
-                                    "P/E Ratio",
-                                    "Debt-to-Equity Ratio",
-                                    "ROE",
-                                    "positives"])
+    st.write("Select sorting criteria:")
+    criteria = st.selectbox("Sort by", ["Dividend Yield",
+                                        # "Yearly Dividend Yield",
+                                        "Payout Ratio",
+                                        "Dividend Growth Rate",
+                                        "EPS",
+                                        "P/E Ratio",
+                                        "Debt-to-Equity Ratio",
+                                        "ROE",
+                                        "positives"])
 
-sorted_df = stock_df.sort_values(by=criteria.replace(" ", "_").lower(), ascending=False)
-sorted_df = sorted_df.dropna()  # Remove rows with any missing data
-sorted_df = sorted_df.round(2)  # Round to two decimal places
-
-
-def highlight_metrics(row):
-    colors = []
-    for col in sorted_df.columns:
-        if col == 'yearly_dividend_yield':
-            colors.append('background-color: green' if row[col] >= 8 else 'background-color: red')
-        elif col == 'payout_ratio':
-            colors.append('background-color: green' if 0 <= row[col] <= 60 else 'background-color: red')
-        elif col == 'dividend_growth_rate':
-            colors.append('background-color: green' if row[col] > 5 else 'background-color: red')
-        elif col == 'eps':
-            colors.append('background-color: green' if row[col] > 0 else 'background-color: red')
-        elif col == 'pe_ratio':
-            colors.append('background-color: green' if row[col] < 20 else 'background-color: red')
-        elif col == 'debt_to_equity':
-            colors.append('background-color: green' if row[col] < 1 else 'background-color: red')
-        elif col == 'roe':
-            colors.append('background-color: green' if row[col] > 10 else 'background-color: red')
-        elif col == 'delta_price_book':
-            colors.append('background-color: green' if row[col] < 0 else 'background-color: red')
-        elif col == 'peg_ratio':
-            colors.append('background-color: green' if 0 <= row[col] <= 1 else 'background-color: red')
-        elif col == 'div_coverage_ratio':
-            colors.append('background-color: green' if row[col] >= 1.5 else 'background-color: red')
-        else:
-            colors.append('')
-    return colors
+    sorted_df = stock_df.sort_values(by=criteria.replace(" ", "_").lower(), ascending=False)
+    sorted_df = sorted_df.dropna()  # Remove rows with any missing data
+    sorted_df = sorted_df.round(2)  # Round to two decimal places
 
 
-# Remove the index column
-st.dataframe(sorted_df.style.apply(highlight_metrics, axis=1))
+    def highlight_metrics(row):
+        colors = []
+        for col in sorted_df.columns:
+            if col == 'payout_ratio':
+                colors.append('background-color: green' if 0 <= row[col] <= 60 else 'background-color: red')
+            elif col == 'dividend_growth_rate':
+                colors.append('background-color: green' if row[col] > 5 else 'background-color: red')
+            elif col == 'eps':
+                colors.append('background-color: green' if row[col] > 0 else 'background-color: red')
+            elif col == 'pe_ratio':
+                colors.append('background-color: green' if row[col] < 20 else 'background-color: red')
+            elif col == 'debt_to_equity':
+                colors.append('background-color: green' if row[col] < 1 else 'background-color: red')
+            elif col == 'roe':
+                colors.append('background-color: green' if row[col] > 10 else 'background-color: red')
+            elif col == 'delta_price_book':
+                colors.append('background-color: green' if row[col] < 0 else 'background-color: red')
+            elif col == 'peg_ratio':
+                colors.append('background-color: green' if 0 <= row[col] <= 1 else 'background-color: red')
+            elif col == 'div_coverage_ratio':
+                colors.append('background-color: green' if row[col] >= 1.5 else 'background-color: red')
+            else:
+                colors.append('')
+        return colors
+    # Remove the index column
+    st.dataframe(sorted_df.style.apply(highlight_metrics, axis=1))
+else:
+    print("No stock matches the requirements")
 
 
 # Press the green button in the gutter to run the script.
