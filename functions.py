@@ -14,7 +14,10 @@ def dict_from_two_lists(lst1: list, lst2: list):
     return dictionary
 
 
-# Function to fetch stock data
+# Instead of using the function fetch_stock_data, the metrics have been downloaded one
+# by one to deal with missing data. The function throws an error even for one missing metric,
+# while this way the tickers with missing data will be used as well and the missing metric
+# will be set to -999999
 def fetch_stock_data(ticker):
     stock = yf.Ticker(ticker)
     info = stock.info

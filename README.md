@@ -1,15 +1,23 @@
 # Overview
 The original idea for this project comes from Avetik Babayan's Medium page: https://medium.com/insiderfinance/build-a-dividend-stock-screener-with-python-d5ed266c7ec3
-
 It is a screener of dividend stocks showing ten financial metrics. For each metric there are thresholds that are used to highlight it as positive or negative. Apart from the metrics, each stock is identified by: ticker, short name, price, beta.
+
+Based on the 10 financial metrics, each stock will have a score with Positives and Negatives.
+Only the stocks with a dividend yield >= 10% and a dividend coverage >= 1.5% will be shown in the final
+streamlit chart
 
 # Metrics and thresholds
 
 ## Delta price - book
 The difference between the current price and the book value: if negative, the stock may be undervalued.
 
-## Yearly Dividend Yield
-Rather than the current dividend yield, the yearly yield is shown, that is the metric recalculated on a 12-months basis. Stocks with a yearly dividend yield lower than 10% are excluded.
+## Forward Dividend Yield
+The dividend yield is calculated by using the total amount of dividends announced for the current year (dividendRate).
+The threshold to be included in the final view is 10%.
+
+WARNING: sometimes dividendRate is wrong both in yfinance and Nasdaq, but trailingAnnualDividendYield and 
+trailingAnnualDividendRate are wrong most of the time, then it's been decided to use dividendRate as the best 
+available value. 
 
 ## Payout ratio
 This metric must be between 0 and 60% to be considered positive.

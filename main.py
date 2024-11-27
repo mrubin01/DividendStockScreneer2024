@@ -14,30 +14,52 @@ import requests_cache
 warnings.filterwarnings('ignore')
 pd.set_option('display.max_columns', None)
 
-""" Instead of using the function fetch_stock_data, the metrics have been downloaded one
-by one to deal with missing data. The function throws an error even for one missing metric,
-while this way the tickers with missing data will be used as well and the missing metric 
-will be set to -999999 """
+# GLOBAL VARIABLES
+CURRENT_MONTH = datetime.now().month
+# industry PE ratios
+INDUSTRY_PE_RATIO = PERatioPerIndustry.avg_pe_ratio
+# industry ROE
+INDUSTRY_ROE = ROEPerIndustry.roe_by_industry
+# Dividend yield threshold
+DIV_YIELD_THRESHOLD = 10
+# Dividend coverage threshold
+DIV_COVERAGE_THRESHOLD = 1.5
 
-current_month = datetime.now().month  # this will be used to calculate the metrics on a yearly basis
-
-# the stock list comes from the project DataFrom_yfinance (active tickers)
-# stocks_list = "stocks.txt"
-
-# the following stocks are updated to Oct 2024
+# the following stocks are updated to Oct 2024 (NASDAQ)
 # stocks_list = "nyse_tickers_oct2024.txt"
 # stocks_list = "nasdaq_tickers_oct2024.txt"
+# stocks.txt comes from the project DataFrom_yfinance (active tickers)
 
-# All stocks in a list
-stock_tickers = read_stock_tickers('nasdaq_tickers_oct2024.txt')
+# Ask for a file or a list
+Q1_is_right = False
+while not Q1_is_right:
+    Q1 = input("You want to use a list or a file (file/list)? ")
+    if Q1 == "file" or Q1 == "list":
+        Q1_is_right = True
 
-# stock_data = [fetch_stock_data(ticker) for ticker in stock_data]
+# If file, nyse or nasdaq? If list, enter a list of tickers (EG: AAPL,CUBA,MSFT)
+Q2_is_right = False
+while not Q2_is_right:
+    if Q1 == "file":
+        Q2 = input("Which exchange (nyse/nasdaq)? ")
+        if Q2 == "nyse" or Q2 == "NYSE":
+            Q2_is_right = True
+            stock_tickers = read_stock_tickers('nyse_tickers_oct2024.txt')
+        elif Q2 == "nasdaq" or Q2 == "NASDAQ":
+            Q2_is_right = True
+            stock_tickers = read_stock_tickers('nasdaq_tickers_oct2024.txt')
+    elif Q1 == "list":
+        Q2 = input("Enter a list of tickers separated by comma and no space ")
+        user_ticker_list = Q2.split(",")
+        if isinstance(user_ticker_list, list) and len(user_ticker_list) > 0:
+            Q2_is_right = True
+            user_ticker_list = Q2.split(",")
+            stock_tickers = user_ticker_list
 
 # uncomment the code below to fetch info for a stock
 # stock = yf.Ticker("ASC")
 # print(stock.info)
 # sys.exit()
-
 
 stock_data = []
 stock_with_no_yield = []
@@ -48,11 +70,6 @@ session = requests_cache.CachedSession('yfinance.cache')
 # the user-agent string comes from the developer tool in Firefox
 session.headers['User-agent'] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
 
-# industry PE ratios
-industry_pe_ratio = PERatioPerIndustry.avg_pe_ratio
-
-# industry ROE
-industry_roe = ROEPerIndustry.roe_by_industry
 
 for t in stock_tickers:
     if t not in ("AIF", "AFT"):
@@ -110,6 +127,10 @@ for t in stock_tickers:
         else:
             div_yield = -999999
 
+        # If div_yield is below the threshold, go to the next iteration
+        if div_yield < DIV_YIELD_THRESHOLD:
+            continue
+
         try:
             if stock.info["payoutRatio"] and not isinstance(stock.info["payoutRatio"], str):
                 pay_ratio = round(stock.info["payoutRatio"] * 100, 2)
@@ -120,6 +141,10 @@ for t in stock_tickers:
             div_coverage = round((1 / pay_ratio) * 100, 2)
         else:
             div_coverage = -999999
+
+        # If div_yield is below the threshold, go to the next iteration
+        if div_coverage < DIV_COVERAGE_THRESHOLD:
+            continue
 
         div_growth_rate = round(calculate_dividend_growth_rate(stock), 2)
 
@@ -143,7 +168,7 @@ for t in stock_tickers:
 
         # compare the company PE Ratio with the industry avg, otherwise compare it with > or < 20%
         try:
-            if pe_ratio != -999999 and pe_ratio < industry_pe_ratio[industry]:
+            if pe_ratio != -999999 and pe_ratio < INDUSTRY_PE_RATIO[industry]:
                 pe_ratio = 1
             else:
                 pe_ratio = 0
@@ -159,9 +184,9 @@ for t in stock_tickers:
         except KeyError:
             roe = -999999
 
-        # compare the company ROE with the industry avg, otherwise check if it's > 10%
+        # compare the company ROE with the industry avg if possible, otherwise check if it's > 10%
         try:
-            if roe != -999999 and roe > industry_roe[industry]:
+            if roe != -999999 and roe > INDUSTRY_ROE[industry]:
                 roe = 1
             else:
                 roe = 0
@@ -207,7 +232,7 @@ for t in stock_tickers:
 
         # exclude stocks with no dividend yield and those with a yearly yield lower than 10%
         try:
-            if dic["dividend_yield"] != -999999 and dic["dividend_yield"] >= 10 and dic["div_coverage_ratio"] >= 1.5:
+            if dic["dividend_yield"] != -999999 and dic["dividend_yield"] >= DIV_YIELD_THRESHOLD and dic["div_coverage_ratio"] >= DIV_COVERAGE_THRESHOLD:
                 stock_data.append(dic)
             else:
                 stock_with_no_yield.append(dic)
